@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acid Vision Pro</title>
+    <style>
+        :root {
+            --neon-green: #00ffcc;
+            --neon-pink: #ff00ff;
+            --neon-cyan: #00bfff;
+            --neon-yellow: #ffff00;
+            --glass-bg: rgba(5, 10, 15, 0.9);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            color: white;
+            user-select: none;
+        }
+
+        .layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #webcam { z-index: 1; filter: contrast(1.1) brightness(0.7) saturate(1.2); }
+        #ai_canvas { z-index: 2; pointer-events: none; }
+        
+        #oscilloscope {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100vw;
+            height: 100px;
+            z-index: 3;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        .glass-panel {
+            position: absolute;
+            z-index: 10;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+
+        #intro-panel {
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 90%; max-width: 440px; text-align: center;
+        }
+
+        #hud-container {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 10;
+        }
+
+        .hud-module {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.8rem;
+            min-width: 160px;
+            backdrop-filter: blur(10px);
+        }
+
+        #hud-left { top: 20px; left: 20px; border-left: 3px solid var(--neon-pink); }
+        #hud-right { top: 20px; right: 20px; border-right: 3px solid var(--neon-cyan); text-align: right; }
+        #hud-center { bottom: 120px; left: 50%; transform: translateX(-50%); border-bottom: 3px solid var(--neon-yellow); width: 280px;}
+
+        h1 { margin: 0 0 10px 0; font-size: 1.6rem; text-shadow: 0 0 10px var(--neon-green); text-transform: uppercase; letter-spacing: 2px;}
+        
+        .instruction-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin: 15px 0;
+            background: rgba(255,255,255,0.05); padding: 12px; border-radius: 6px; font-size: 0.8rem;
+        }
+
+        button {
+            width: 100%; padding: 20px; font-size: 1rem; font-weight: 800; color: #000;
+            background: var(--neon-green); border: none; border-radius: 8px; cursor: pointer;
+            text-transform: uppercase; transition: all 0.2s; letter-spacing: 2px;
+        }
+        button:hover:not(:disabled) { background: #fff; transform: scale(1.02); box-shadow: 0 0 30px var(--neon-green); }
+        button:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; }
+
+        .bar-container { margin-bottom: 10px; }
+        .bar-label { display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 4px; color: #aaa; font-family: monospace;}
+        .bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .bar-fill { height: 100%; width: 0%; transition: width 0.1s; }
+        
+        #fill-mouth { background: var(--neon-pink); }
+        #fill-tilt { background: var(--neon-green); }
+        #fill-dist { background: var(--neon-yellow); }
+        
+        .note-display { font-size: 1.2rem; font-weight: bold; color: var(--neon-pink); font-family: monospace; }
+        #hud-right .note-display { color: var(--neon-cyan); }
+
+        #loading-overlay {
+            position: absolute; inset: 0; background: #000; z-index: 100; display: flex;
+            flex-direction: column; align-items: center; justify-content: center; color: var(--neon-green);
+            font-size: 0.9rem; letter-spacing: 3px; font-weight: bold;
+        }
+
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid rgba(0, 255, 204, 0.1); border-top: 4px solid var(--neon-green);
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <span>BOOTING_NEURAL_OS</span>
+    </div>
+
+    <video id="webcam" class="layer" autoplay playsinline muted></video>
+    <canvas id="ai_canvas" class="layer"></canvas>
+    <canvas id="oscilloscope"></canvas>
+
+    <div class="glass-panel" id="intro-panel">
+        <h1>ACID_VISION_PRO</h1>
+        <div class="instruction-grid">
+            <div><b>L Hand:</b> Bass (8th)</div>
+            <div><b>R Hand:</b> Lead (16th)</div>
+            <div><b>Wide Arms:</b> Beat Hype</div>
+            <div><b>Mouth:</b> Filter Wah</div>
+        </div>
+        <button id="start-btn" disabled>Waiting for AI...</button>
+    </div>
+
+    <div id="hud-container">
+        <div class="hud-module" id="hud-left">
+            <h2 style="font-size: 0.7rem; color: #666; margin: 0;">BASS_OSC</h2>
+            <div class="note-display" id="bass-note">--</div>
+        </div>
+        <div class="hud-module" id="hud-right">
+            <h2 style="font-size: 0.7rem; color: #666; margin: 0;">LEAD_OSC</h2>
+            <div class="note-display" id="lead-note">--</div>
+        </div>
+        <div class="hud-module" id="hud-center">
+            <div class="bar-container">
+                <div class="bar-label"><span>SPACE_WAH</span><span id="val-mouth">0%</span></div>
+                <div class="bar-bg"><div class="bar-fill" id="fill-mouth"></div></div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-label"><span>SQUELCH_DRIVE</span><span id="val-tilt">0%</span></div>
+                <div class="bar-bg"><div class="bar-fill" id="fill-tilt"></div></div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-label"><span>BEAT_HYPE</span><span id="val-dist">0%</span></div>
+                <div class="bar-bg"><div class="bar-fill" id="fill-dist"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            FaceLandmarker,
+            HandLandmarker,
+            FilesetResolver,
+            DrawingUtils
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+        const video = document.getElementById("webcam");
+        const aiCanvas = document.getElementById("ai_canvas");
+        const aiCtx = aiCanvas.getContext("2d");
+        const oscCanvas = document.getElementById("oscilloscope");
+        const oscCtx = oscCanvas.getContext("2d");
+        const startBtn = document.getElementById("start-btn");
+        const loader = document.getElementById("loading-overlay");
+
+        let faceLandmarker, handLandmarker, drawingUtils;
+        let lastVideoTime = -1;
+
+        // --- AUDIO ENGINE ---
+        let audioCtx, masterFilter, distortion, delayNode, delayGain, analyser, drumGain;
+        const bassScale = [65.41, 77.78, 87.31, 98.00]; 
+        const leadScale = [261.63, 311.13, 349.23, 392.00]; 
+        const bassNames = ["C2", "Eb2", "F2", "G2"];
+        const leadNames = ["C4", "Eb4", "F4", "G4"];
+
+        let state = {
+            mouthOpen: 0, headTilt: 0, armSpan: 0,
+            bassIndex: -1, leadIndex: -1
+        };
+
+        function makeDistortionCurve(amount) {
+            const n_samples = 44100;
+            const curve = new Float32Array(n_samples);
+            for (let i = 0; i < n_samples; ++i) {
+                const x = i * 2 / n_samples - 1;
+                curve[i] = (3 + amount) * x * 20 * (Math.PI / 180) / (Math.PI + amount * Math.abs(x));
+            }
+            return curve;
+        }
+
+        async function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            masterFilter = audioCtx.createBiquadFilter();
+            masterFilter.type = "lowpass";
+            masterFilter.frequency.value = 400;
+
+            distortion = audioCtx.createWaveShaper();
+            distortion.curve = makeDistortionCurve(0);
+            distortion.oversample = '4x';
+
+            delayNode = audioCtx.createDelay(1.0);
+            delayNode.delayTime.value = 0.375; 
+            const feedback = audioCtx.createGain();
+            feedback.gain.value = 0.35;
+            delayGain = audioCtx.createGain();
+            delayGain.gain.value = 0;
+            
+            delayNode.connect(feedback); feedback.connect(delayNode); delayNode.connect(delayGain);
+            
+            drumGain = audioCtx.createGain();
+            drumGain.gain.value = 0;
+
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+
+            masterFilter.connect(distortion);
+            distortion.connect(analyser);
+            distortion.connect(delayNode);
+            delayGain.connect(analyser);
+            drumGain.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            
+            startScheduler();
+        }
+
+        const tempo = 124;
+        let nextNoteTime = 0;
+        let beatStep = 0;
+
+        function startScheduler() {
+            nextNoteTime = audioCtx.currentTime;
+            function run() {
+                while (nextNoteTime < audioCtx.currentTime + 0.1) {
+                    const secondsPerBeat = 60.0 / tempo;
+                    scheduleStep(beatStep, nextNoteTime);
+                    nextNoteTime += 0.25 * secondsPerBeat; 
+                    beatStep = (beatStep + 1) % 16;
+                }
+                setTimeout(run, 25);
+            }
+            run();
+        }
+
+        function scheduleStep(step, time) {
+            if (step % 4 === 0) triggerKick(time);
+            if (step % 4 === 2 || (state.armSpan > 0.6 && step % 2 !== 0)) triggerHat(time);
+            if (state.bassIndex !== -1 && step % 2 === 0) triggerSynthNote(bassScale[state.bassIndex], "square", 0.3, 0.1, time);
+            if (state.leadIndex !== -1) triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.15, 0.05, time);
+        }
+
+        function triggerKick(time) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.connect(g); g.connect(drumGain);
+            osc.frequency.setValueAtTime(150, time);
+            osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.3);
+            g.gain.setValueAtTime(1, time);
+            g.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+            osc.start(time); osc.stop(time + 0.3);
+        }
+
+        function triggerHat(time) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            const f = audioCtx.createBiquadFilter();
+            osc.type = 'square'; osc.connect(f); f.connect(g); g.connect(drumGain);
+            f.type = 'highpass'; f.frequency.value = 8000;
+            g.gain.setValueAtTime(0.15, time);
+            g.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+            osc.start(time); osc.stop(time + 0.05);
+        }
+
+        function triggerSynthNote(freq, type, vol, dur, time) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type; osc.frequency.value = freq;
+            osc.connect(g); g.connect(masterFilter);
+            g.gain.setValueAtTime(0, time);
+            g.gain.linearRampToValueAtTime(vol, time + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.01, time + dur);
+            osc.start(time); osc.stop(time + dur);
+        }
+
+        // --- VISION HELPERS ---
+        function drawLabel(text, x, y, color) {
+            aiCtx.save();
+            aiCtx.translate(x * aiCanvas.width, y * aiCanvas.height);
+            aiCtx.scale(-1, 1); 
+            aiCtx.font = "900 12px 'JetBrains Mono', monospace";
+            aiCtx.fillStyle = color;
+            aiCtx.textAlign = "center";
+            aiCtx.shadowBlur = 4;
+            aiCtx.shadowColor = "black";
+            aiCtx.fillText(text, 0, 0);
+            aiCtx.restore();
+        }
+
+        async function initAI() {
+            try {
+                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+                
+                // Set delegate to "CPU" to avoid potential XNNPACK related INFO logs/fallbacks
+                faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                    baseOptions: { 
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", 
+                        delegate: "CPU" 
+                    },
+                    outputFaceBlendshapes: true, 
+                    runningMode: "VIDEO"
+                });
+                
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: { 
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", 
+                        delegate: "CPU" 
+                    },
+                    runningMode: "VIDEO", 
+                    numHands: 2
+                });
+                
+                drawingUtils = new DrawingUtils(aiCtx);
+                loader.style.opacity = "0";
+                setTimeout(() => loader.style.display = "none", 500);
+
+                startBtn.innerText = "INITIALIZE_SYSTEM";
+                startBtn.disabled = false;
+            } catch (err) {
+                console.error("AI Error:", err);
+                startBtn.innerText = "WASM_FAILURE";
+            }
+        }
+
+        startBtn.addEventListener("click", async () => {
+            // Immediately start audio (requires user gesture)
+            await initAudio();
+
+            document.getElementById("intro-panel").style.display = "none";
+            document.getElementById("hud-container").style.display = "block";
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720, frameRate: { ideal: 30 } } 
+                });
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", () => {
+                    aiCanvas.width = video.videoWidth;
+                    aiCanvas.height = video.videoHeight;
+                    loop();
+                });
+            } catch (e) {
+                console.error("Camera denied:", e);
+                // alert() is forbidden, using console for fallback
+            }
+        });
+
+        function loop() {
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const face = faceLandmarker.detectForVideo(video, performance.now());
+                const hands = handLandmarker.detectForVideo(video, performance.now());
+                aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
+                process(face, hands);
+            }
+            requestAnimationFrame(loop);
+            drawOsc();
+        }
+
+        function process(face, hands) {
+            const time = audioCtx.currentTime;
+            let lPos = null, rPos = null;
+            state.bassIndex = -1; state.leadIndex = -1;
+
+            if (hands.landmarks.length > 0) {
+                hands.landmarks.forEach((lms, idx) => {
+                    const isLeft = hands.handednesses[idx][0].categoryName === "Left";
+                    const wrist = lms[0], thumb = lms[4];
+                    if (isLeft) lPos = wrist; else rPos = wrist;
+                    
+                    const color = isLeft ? "#ff00ff" : "#00bfff";
+                    drawingUtils.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, { color: color + "33", lineWidth: 1 });
+                    
+                    const tips = [8, 12, 16, 20];
+                    tips.forEach((tIdx, i) => {
+                        const tip = lms[tIdx];
+                        const d = Math.hypot(thumb.x - tip.x, thumb.y - tip.y);
+                        if (d < 0.06) {
+                            if (isLeft) {
+                                state.bassIndex = i;
+                                drawLabel(bassNames[i], tip.x, tip.y - 0.04, "#ff00ff");
+                            } else {
+                                state.leadIndex = i;
+                                drawLabel(leadNames[i], tip.x, tip.y - 0.04, "#00bfff");
+                            }
+                        }
+                    });
+                });
+            }
+            document.getElementById("bass-note").innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
+            document.getElementById("lead-note").innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
+
+            if (lPos && rPos) {
+                const dist = Math.abs(lPos.x - rPos.x);
+                state.armSpan = Math.max(0, Math.min(1, (dist - 0.15) / 0.5));
+                drumGain.gain.setTargetAtTime(state.armSpan, time, 0.1);
+            }
+            updateBar("dist", state.armSpan * 100);
+
+            if (face.faceLandmarks.length > 0) {
+                const lms = face.faceLandmarks[0];
+                const shapes = face.faceBlendshapes[0].categories;
+                
+                drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#ffffff08", lineWidth: 1 });
+                drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_CONTOURS, { color: "#ffffff22", lineWidth: 1 });
+
+                const jaw = shapes.find(s => s.categoryName === "jawOpen")?.score || 0;
+                masterFilter.frequency.setTargetAtTime(400 + (jaw * 6000), time, 0.05);
+                delayGain.gain.setTargetAtTime(jaw * 0.6, time, 0.05);
+                updateBar("mouth", jaw * 100);
+
+                const angle = Math.abs(Math.atan2(lms[263].y - lms[33].y, lms[263].x - lms[33].x));
+                const tilt = Math.min(angle / 0.45, 1);
+                masterFilter.Q.setTargetAtTime(1 + (tilt * 22), time, 0.1);
+                distortion.curve = makeDistortionCurve(tilt * 450);
+                updateBar("tilt", tilt * 100);
+
+                if (jaw > 0.25) drawLabel("WAH_ON", lms[14].x, lms[14].y + 0.05, "white");
+                if (tilt > 0.25) drawLabel("303_DRIVE", lms[1].x, lms[1].y - 0.05, "#00ffcc");
+            }
+        }
+
+        function updateBar(id, val) {
+            const bar = document.getElementById(`fill-${id}`);
+            const valDisplay = document.getElementById(`val-${id}`);
+            if (bar) bar.style.width = val + "%";
+            if (valDisplay) valDisplay.innerText = Math.round(val) + "%";
+        }
+
+        function drawOsc() {
+            if (!analyser) return;
+            oscCanvas.width = window.innerWidth;
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteTimeDomainData(data);
+            oscCtx.clearRect(0, 0, oscCanvas.width, oscCanvas.height);
+            oscCtx.lineWidth = 2;
+            oscCtx.strokeStyle = "#00ffcc";
+            oscCtx.beginPath();
+            const slice = oscCanvas.width / data.length;
+            let x = 0;
+            for(let i=0; i<data.length; i++) {
+                const y = (data[i]/128.0) * (oscCanvas.height/2);
+                if(i===0) oscCtx.moveTo(x,y); else oscCtx.lineTo(x,y);
+                x += slice;
+            }
+            oscCtx.stroke();
+        }
+
+        window.onload = initAI;
+    </script>
+</body>
+</html>
