@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acid Vision Pro</title>
+    <title>Acid Vision Pro - Techno Edition</title>
     <style>
         :root {
             --neon-green: #00ffcc;
             --neon-pink: #ff00ff;
             --neon-cyan: #00bfff;
             --neon-yellow: #ffff00;
-            --glass-bg: rgba(5, 10, 15, 0.9);
+            --glass-bg: rgba(5, 10, 15, 0.95);
             --glass-border: rgba(255, 255, 255, 0.1);
         }
 
@@ -33,7 +33,7 @@
             transform: scaleX(-1);
         }
 
-        #webcam { z-index: 1; filter: contrast(1.1) brightness(0.7) saturate(1.2); }
+        #webcam { z-index: 1; filter: contrast(1.2) brightness(0.6) saturate(1.2); }
         #ai_canvas { z-index: 2; pointer-events: none; }
         
         #oscilloscope {
@@ -45,6 +45,7 @@
             z-index: 3;
             pointer-events: none;
             opacity: 0.8;
+            transition: all 0.3s ease;
         }
 
         .glass-panel {
@@ -54,13 +55,13 @@
             backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
             border-radius: 12px;
-            padding: 2rem;
+            padding: 1.5rem;
             box-shadow: 0 0 50px rgba(0,0,0,0.8);
         }
 
         #intro-panel {
             top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 90%; max-width: 440px; text-align: center;
+            width: 90%; max-width: 420px; text-align: center;
         }
 
         #hud-container {
@@ -72,7 +73,7 @@
 
         .hud-module {
             position: absolute;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             padding: 0.8rem;
@@ -82,9 +83,9 @@
 
         #hud-left { top: 20px; left: 20px; border-left: 3px solid var(--neon-pink); }
         #hud-right { top: 20px; right: 20px; border-right: 3px solid var(--neon-cyan); text-align: right; }
-        #hud-center { bottom: 120px; left: 50%; transform: translateX(-50%); border-bottom: 3px solid var(--neon-yellow); width: 280px;}
+        #hud-center { bottom: 120px; left: 50%; transform: translateX(-50%); border-bottom: 3px solid var(--neon-yellow); width: 260px;}
 
-        h1 { margin: 0 0 10px 0; font-size: 1.6rem; text-shadow: 0 0 10px var(--neon-green); text-transform: uppercase; letter-spacing: 2px;}
+        h1 { margin: 0 0 10px 0; font-size: 1.5rem; text-shadow: 0 0 10px var(--neon-green); text-transform: uppercase; letter-spacing: 2px;}
         
         .instruction-grid {
             display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; margin: 15px 0;
@@ -92,21 +93,22 @@
         }
 
         button {
-            width: 100%; padding: 20px; font-size: 1rem; font-weight: 800; color: #000;
+            width: 100%; padding: 18px; font-size: 1rem; font-weight: 800; color: #000;
             background: var(--neon-green); border: none; border-radius: 8px; cursor: pointer;
             text-transform: uppercase; transition: all 0.2s; letter-spacing: 2px;
         }
-        button:hover:not(:disabled) { background: #fff; transform: scale(1.02); box-shadow: 0 0 30px var(--neon-green); }
+        button:hover:not(:disabled) { background: #fff; transform: scale(1.02); }
         button:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; }
 
-        .bar-container { margin-bottom: 10px; }
-        .bar-label { display: flex; justify-content: space-between; font-size: 0.65rem; margin-bottom: 4px; color: #aaa; font-family: monospace;}
-        .bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .bar-container { margin-bottom: 8px; }
+        .bar-label { display: flex; justify-content: space-between; font-size: 0.6rem; margin-bottom: 3px; color: #aaa; font-family: monospace;}
+        .bar-bg { width: 100%; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
         .bar-fill { height: 100%; width: 0%; transition: width 0.1s; }
         
         #fill-mouth { background: var(--neon-pink); }
         #fill-tilt { background: var(--neon-green); }
         #fill-dist { background: var(--neon-yellow); }
+        #fill-pos { background: var(--neon-cyan); }
         
         .note-display { font-size: 1.2rem; font-weight: bold; color: var(--neon-pink); font-family: monospace; }
         #hud-right .note-display { color: var(--neon-cyan); }
@@ -122,13 +124,35 @@
             border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            #oscilloscope {
+                bottom: 50%;
+                transform: translateY(50%);
+                height: 150px;
+                opacity: 0.6;
+            }
+            #hud-center {
+                bottom: 20px;
+                width: 90%;
+                padding: 0.6rem;
+            }
+            #hud-left, #hud-right {
+                top: 10px;
+                min-width: 120px;
+                padding: 0.5rem;
+            }
+            .hud-module h2 { font-size: 0.5rem; }
+            .note-display { font-size: 1rem; }
+        }
     </style>
 </head>
 <body>
 
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <span>BOOTING_NEURAL_OS</span>
+        <span>STAGING_GAIN_PROTOCOL</span>
     </div>
 
     <video id="webcam" class="layer" autoplay playsinline muted></video>
@@ -136,37 +160,43 @@
     <canvas id="oscilloscope"></canvas>
 
     <div class="glass-panel" id="intro-panel">
-        <h1>ACID_VISION_PRO</h1>
+        <h1>ACID_TECHNO_PRO</h1>
         <div class="instruction-grid">
-            <div><b>L Hand:</b> Bass (8th)</div>
-            <div><b>R Hand:</b> Lead (16th)</div>
-            <div><b>Wide Arms:</b> Beat Hype</div>
-            <div><b>Mouth:</b> Filter Wah</div>
+            <div><b>L Hand:</b> Bass + Panning</div>
+            <div><b>R Hand:</b> Lead + Brightness</div>
+            <div><b>Wide Arms:</b> Drum Energy</div>
+            <div><b>Mouth:</b> Acid Filter</div>
         </div>
-        <button id="start-btn" disabled>Waiting for AI...</button>
+        <button id="start-btn" disabled>BOOTING_AI...</button>
     </div>
 
     <div id="hud-container">
         <div class="hud-module" id="hud-left">
-            <h2 style="font-size: 0.7rem; color: #666; margin: 0;">BASS_OSC</h2>
+            <h2 style="font-size: 0.6rem; color: #666; margin: 0;">BASS_SYNTH</h2>
             <div class="note-display" id="bass-note">--</div>
+            <div id="bass-coords" style="font-size: 0.6rem; color: #ff00ff88; margin-top: 5px;">PAN:0%</div>
         </div>
         <div class="hud-module" id="hud-right">
-            <h2 style="font-size: 0.7rem; color: #666; margin: 0;">LEAD_OSC</h2>
+            <h2 style="font-size: 0.6rem; color: #666; margin: 0;">LEAD_SYNTH</h2>
             <div class="note-display" id="lead-note">--</div>
+            <div id="lead-coords" style="font-size: 0.6rem; color: #00bfff88; margin-top: 5px;">PAN:0%</div>
         </div>
         <div class="hud-module" id="hud-center">
             <div class="bar-container">
-                <div class="bar-label"><span>SPACE_WAH</span><span id="val-mouth">0%</span></div>
+                <div class="bar-label"><span>WAH (MOUTH)</span><span id="val-mouth">0%</span></div>
                 <div class="bar-bg"><div class="bar-fill" id="fill-mouth"></div></div>
             </div>
             <div class="bar-container">
-                <div class="bar-label"><span>SQUELCH_DRIVE</span><span id="val-tilt">0%</span></div>
+                <div class="bar-label"><span>SQUELCH (TILT)</span><span id="val-tilt">0%</span></div>
                 <div class="bar-bg"><div class="bar-fill" id="fill-tilt"></div></div>
             </div>
             <div class="bar-container">
-                <div class="bar-label"><span>BEAT_HYPE</span><span id="val-dist">0%</span></div>
+                <div class="bar-label"><span>DRUMS (SPAN)</span><span id="val-dist">0%</span></div>
                 <div class="bar-bg"><div class="bar-fill" id="fill-dist"></div></div>
+            </div>
+            <div class="bar-container">
+                <div class="bar-label"><span>BRITE (Y-POS)</span><span id="val-pos">0%</span></div>
+                <div class="bar-bg"><div class="bar-fill" id="fill-pos"></div></div>
             </div>
         </div>
     </div>
@@ -191,7 +221,9 @@
         let lastVideoTime = -1;
 
         // --- AUDIO ENGINE ---
-        let audioCtx, masterFilter, distortion, delayNode, delayGain, analyser, drumGain;
+        let audioCtx, masterFilter, distortion, delayNode, delayGain, analyser, drumGain, masterGain, compressor;
+        let pannerBass, pannerLead, brightnessFilter;
+
         const bassScale = [65.41, 77.78, 87.31, 98.00]; 
         const leadScale = [261.63, 311.13, 349.23, 392.00]; 
         const bassNames = ["C2", "Eb2", "F2", "G2"];
@@ -199,7 +231,10 @@
 
         let state = {
             mouthOpen: 0, headTilt: 0, armSpan: 0,
-            bassIndex: -1, leadIndex: -1
+            bassIndex: -1, leadIndex: -1,
+            lHand: { x: 0.5, y: 0.5 },
+            rHand: { x: 0.5, y: 0.5 },
+            pulse: 0
         };
 
         function makeDistortionCurve(amount) {
@@ -216,13 +251,32 @@
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
+            // 1. MASTER COMPRESSOR (Ensures drums cut through and nothing clips)
+            compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+            compressor.knee.setValueAtTime(40, audioCtx.currentTime);
+            compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+            compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+            compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 1.0;
+
             masterFilter = audioCtx.createBiquadFilter();
             masterFilter.type = "lowpass";
             masterFilter.frequency.value = 400;
 
+            brightnessFilter = audioCtx.createBiquadFilter();
+            brightnessFilter.type = "highshelf";
+            brightnessFilter.frequency.value = 3500;
+            brightnessFilter.gain.value = 0;
+
             distortion = audioCtx.createWaveShaper();
             distortion.curve = makeDistortionCurve(0);
-            distortion.oversample = '4x';
+            distortion.oversample = 'none';
+
+            pannerBass = audioCtx.createStereoPanner();
+            pannerLead = audioCtx.createStereoPanner();
 
             delayNode = audioCtx.createDelay(1.0);
             delayNode.delayTime.value = 0.375; 
@@ -234,22 +288,26 @@
             delayNode.connect(feedback); feedback.connect(delayNode); delayNode.connect(delayGain);
             
             drumGain = audioCtx.createGain();
-            drumGain.gain.value = 0;
+            drumGain.gain.value = 0.2; // Base volume so drums are always hearable
 
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 512;
+            analyser.fftSize = 256;
 
-            masterFilter.connect(distortion);
-            distortion.connect(analyser);
-            distortion.connect(delayNode);
-            delayGain.connect(analyser);
-            drumGain.connect(analyser);
-            analyser.connect(audioCtx.destination);
+            // MIXING BUSS
+            masterFilter.connect(brightnessFilter);
+            brightnessFilter.connect(distortion);
+            distortion.connect(compressor);
+            delayGain.connect(compressor);
+            drumGain.connect(compressor);
+            
+            compressor.connect(analyser);
+            analyser.connect(masterGain);
+            masterGain.connect(audioCtx.destination);
             
             startScheduler();
         }
 
-        const tempo = 124;
+        const tempo = 128;
         let nextNoteTime = 0;
         let beatStep = 0;
 
@@ -268,64 +326,90 @@
         }
 
         function scheduleStep(step, time) {
-            if (step % 4 === 0) triggerKick(time);
-            if (step % 4 === 2 || (state.armSpan > 0.6 && step % 2 !== 0)) triggerHat(time);
-            if (state.bassIndex !== -1 && step % 2 === 0) triggerSynthNote(bassScale[state.bassIndex], "square", 0.3, 0.1, time);
-            if (state.leadIndex !== -1) triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.15, 0.05, time);
+            state.pulse = (step % 4 === 0) ? 1.0 : state.pulse * 0.8;
+            
+            if (step % 4 === 0) triggerTechnoKick(time);
+            if (step === 4 || step === 12) triggerSnare(time);
+            
+            if (step % 4 === 2) {
+                triggerHat(time, 0.5); 
+            } else if (step % 2 !== 0 && state.armSpan > 0.4) {
+                triggerHat(time, 0.2 * state.armSpan); 
+            }
+
+            if (state.bassIndex !== -1 && step % 2 === 0) triggerSynthNote(bassScale[state.bassIndex], "square", 0.2, 0.1, time, pannerBass);
+            if (state.leadIndex !== -1) triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.12, 0.05, time, pannerLead);
         }
 
-        function triggerKick(time) {
+        function triggerTechnoKick(time) {
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.connect(g); g.connect(drumGain);
-            osc.frequency.setValueAtTime(150, time);
-            osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.3);
-            g.gain.setValueAtTime(1, time);
-            g.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
-            osc.start(time); osc.stop(time + 0.3);
+            osc.frequency.setValueAtTime(160, time);
+            osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
+            g.gain.setValueAtTime(1.1, time);
+            g.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
+            osc.start(time); osc.stop(time + 0.4);
+
+            const clickOsc = audioCtx.createOscillator();
+            const clickGain = audioCtx.createGain();
+            clickOsc.type = 'square';
+            clickOsc.connect(clickGain); clickGain.connect(drumGain);
+            clickOsc.frequency.setValueAtTime(3000, time);
+            clickOsc.frequency.exponentialRampToValueAtTime(100, time + 0.02);
+            clickGain.gain.setValueAtTime(0.35, time);
+            clickGain.gain.exponentialRampToValueAtTime(0.01, time + 0.02);
+            clickOsc.start(time); clickOsc.stop(time + 0.02);
         }
 
-        function triggerHat(time) {
+        function triggerSnare(time) {
+            const bufferSize = audioCtx.sampleRate * 0.12;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1200;
+            filter.Q.value = 0.6;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.6, time);
+            g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+            noise.connect(filter);
+            filter.connect(g);
+            g.connect(drumGain);
+            noise.start(time);
+            noise.stop(time + 0.12);
+        }
+
+        function triggerHat(time, vol) {
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             const f = audioCtx.createBiquadFilter();
             osc.type = 'square'; osc.connect(f); f.connect(g); g.connect(drumGain);
-            f.type = 'highpass'; f.frequency.value = 8000;
-            g.gain.setValueAtTime(0.15, time);
+            f.type = 'highpass'; f.frequency.value = 7500;
+            g.gain.setValueAtTime(vol, time);
             g.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
             osc.start(time); osc.stop(time + 0.05);
         }
 
-        function triggerSynthNote(freq, type, vol, dur, time) {
+        function triggerSynthNote(freq, type, vol, dur, time, panner) {
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = type; osc.frequency.value = freq;
-            osc.connect(g); g.connect(masterFilter);
+            osc.connect(g); g.connect(panner); panner.connect(masterFilter);
             g.gain.setValueAtTime(0, time);
             g.gain.linearRampToValueAtTime(vol, time + 0.01);
             g.gain.exponentialRampToValueAtTime(0.01, time + dur);
             osc.start(time); osc.stop(time + dur);
         }
 
-        // --- VISION HELPERS ---
-        function drawLabel(text, x, y, color) {
-            aiCtx.save();
-            aiCtx.translate(x * aiCanvas.width, y * aiCanvas.height);
-            aiCtx.scale(-1, 1); 
-            aiCtx.font = "900 12px 'JetBrains Mono', monospace";
-            aiCtx.fillStyle = color;
-            aiCtx.textAlign = "center";
-            aiCtx.shadowBlur = 4;
-            aiCtx.shadowColor = "black";
-            aiCtx.fillText(text, 0, 0);
-            aiCtx.restore();
-        }
-
         async function initAI() {
             try {
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 
-                // Set delegate to "CPU" to avoid potential XNNPACK related INFO logs/fallbacks
+                // Explicitly setting delegate to CPU for both marker options to handle XNNPACK info logs
                 faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
                     baseOptions: { 
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", 
@@ -347,25 +431,20 @@
                 drawingUtils = new DrawingUtils(aiCtx);
                 loader.style.opacity = "0";
                 setTimeout(() => loader.style.display = "none", 500);
-
-                startBtn.innerText = "INITIALIZE_SYSTEM";
+                startBtn.innerText = "START_ENGINE";
                 startBtn.disabled = false;
             } catch (err) {
-                console.error("AI Error:", err);
-                startBtn.innerText = "WASM_FAILURE";
+                startBtn.innerText = "LOAD_ERROR";
             }
         }
 
         startBtn.addEventListener("click", async () => {
-            // Immediately start audio (requires user gesture)
             await initAudio();
-
             document.getElementById("intro-panel").style.display = "none";
             document.getElementById("hud-container").style.display = "block";
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 1280, height: 720, frameRate: { ideal: 30 } } 
+                    video: { width: 640, height: 360, frameRate: { ideal: 30 } } 
                 });
                 video.srcObject = stream;
                 video.addEventListener("loadeddata", () => {
@@ -373,10 +452,7 @@
                     aiCanvas.height = video.videoHeight;
                     loop();
                 });
-            } catch (e) {
-                console.error("Camera denied:", e);
-                // alert() is forbidden, using console for fallback
-            }
+            } catch (e) { console.error("Camera error"); }
         });
 
         function loop() {
@@ -400,57 +476,56 @@
                 hands.landmarks.forEach((lms, idx) => {
                     const isLeft = hands.handednesses[idx][0].categoryName === "Left";
                     const wrist = lms[0], thumb = lms[4];
-                    if (isLeft) lPos = wrist; else rPos = wrist;
-                    
-                    const color = isLeft ? "#ff00ff" : "#00bfff";
-                    drawingUtils.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, { color: color + "33", lineWidth: 1 });
+                    if (isLeft) {
+                        lPos = wrist; 
+                        state.lHand = { x: 1 - wrist.x, y: wrist.y }; 
+                        pannerBass.pan.setTargetAtTime((state.lHand.x * 2) - 1, time, 0.1);
+                        document.getElementById("bass-coords").innerText = `PAN:${Math.round(((state.lHand.x * 2) - 1) * 100)}%`;
+                    } else {
+                        rPos = wrist;
+                        state.rHand = { x: 1 - wrist.x, y: wrist.y };
+                        pannerLead.pan.setTargetAtTime((state.rHand.x * 2) - 1, time, 0.1);
+                        brightnessFilter.gain.setTargetAtTime((1 - state.rHand.y) * 20, time, 0.1);
+                        updateBar("pos", (1 - state.rHand.y) * 100);
+                        document.getElementById("lead-coords").innerText = `PAN:${Math.round(((state.rHand.x * 2) - 1) * 100)}%`;
+                    }
                     
                     const tips = [8, 12, 16, 20];
                     tips.forEach((tIdx, i) => {
                         const tip = lms[tIdx];
-                        const d = Math.hypot(thumb.x - tip.x, thumb.y - tip.y);
-                        if (d < 0.06) {
-                            if (isLeft) {
-                                state.bassIndex = i;
-                                drawLabel(bassNames[i], tip.x, tip.y - 0.04, "#ff00ff");
-                            } else {
-                                state.leadIndex = i;
-                                drawLabel(leadNames[i], tip.x, tip.y - 0.04, "#00bfff");
-                            }
+                        if (Math.hypot(thumb.x - tip.x, thumb.y - tip.y) < 0.07) {
+                            if (isLeft) state.bassIndex = i; else state.leadIndex = i;
+                            const color = isLeft ? "#ff00ff" : "#00bfff";
+                            aiCtx.beginPath();
+                            aiCtx.arc(((tip.x + thumb.x) / 2) * aiCanvas.width, ((tip.y + thumb.y) / 2) * aiCanvas.height, 12 * state.pulse, 0, 7);
+                            aiCtx.fillStyle = color;
+                            aiCtx.fill();
                         }
                     });
                 });
             }
+            
             document.getElementById("bass-note").innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
             document.getElementById("lead-note").innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
 
             if (lPos && rPos) {
-                const dist = Math.abs(lPos.x - rPos.x);
-                state.armSpan = Math.max(0, Math.min(1, (dist - 0.15) / 0.5));
-                drumGain.gain.setTargetAtTime(state.armSpan, time, 0.1);
+                state.armSpan = Math.max(0, Math.min(1, (Math.abs(lPos.x - rPos.x) - 0.15) / 0.5));
+                drumGain.gain.setTargetAtTime(0.2 + (state.armSpan * 1.4), time, 0.1);
             }
             updateBar("dist", state.armSpan * 100);
 
             if (face.faceLandmarks.length > 0) {
-                const lms = face.faceLandmarks[0];
                 const shapes = face.faceBlendshapes[0].categories;
-                
-                drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#ffffff08", lineWidth: 1 });
-                drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_CONTOURS, { color: "#ffffff22", lineWidth: 1 });
-
                 const jaw = shapes.find(s => s.categoryName === "jawOpen")?.score || 0;
-                masterFilter.frequency.setTargetAtTime(400 + (jaw * 6000), time, 0.05);
-                delayGain.gain.setTargetAtTime(jaw * 0.6, time, 0.05);
+                masterFilter.frequency.setTargetAtTime(400 + (jaw * 6500), time, 0.05);
+                delayGain.gain.setTargetAtTime(jaw * 0.7, time, 0.05);
                 updateBar("mouth", jaw * 100);
 
-                const angle = Math.abs(Math.atan2(lms[263].y - lms[33].y, lms[263].x - lms[33].x));
-                const tilt = Math.min(angle / 0.45, 1);
-                masterFilter.Q.setTargetAtTime(1 + (tilt * 22), time, 0.1);
-                distortion.curve = makeDistortionCurve(tilt * 450);
+                const lms = face.faceLandmarks[0];
+                const tilt = Math.min(Math.abs(Math.atan2(lms[263].y - lms[33].y, lms[263].x - lms[33].x)) / 0.45, 1);
+                masterFilter.Q.setTargetAtTime(1 + (tilt * 25), time, 0.1);
+                distortion.curve = makeDistortionCurve(tilt * 550);
                 updateBar("tilt", tilt * 100);
-
-                if (jaw > 0.25) drawLabel("WAH_ON", lms[14].x, lms[14].y + 0.05, "white");
-                if (tilt > 0.25) drawLabel("303_DRIVE", lms[1].x, lms[1].y - 0.05, "#00ffcc");
             }
         }
 
@@ -464,6 +539,9 @@
         function drawOsc() {
             if (!analyser) return;
             oscCanvas.width = window.innerWidth;
+            const cssHeight = parseInt(getComputedStyle(oscCanvas).height);
+            oscCanvas.height = cssHeight;
+            
             const data = new Uint8Array(analyser.frequencyBinCount);
             analyser.getByteTimeDomainData(data);
             oscCtx.clearRect(0, 0, oscCanvas.width, oscCanvas.height);
