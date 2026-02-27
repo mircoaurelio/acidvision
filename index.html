@@ -111,6 +111,83 @@
         .mode-btn.active { background: var(--neon-green); color: #000; border-color: var(--neon-green); }
         .mode-btn:not(.active):hover { background: rgba(255,255,255,0.12); color: #fff; }
 
+        .note-card-selectable { pointer-events: auto; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+        .note-card-selectable:hover { border-color: rgba(0, 255, 204, 0.6); box-shadow: 0 0 18px rgba(0, 255, 204, 0.2); }
+
+        #instrument-context-menu {
+            display: none;
+            position: fixed;
+            z-index: 40;
+            width: 220px;
+            padding: 10px;
+            background: rgba(8, 14, 20, 0.98);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 8px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            pointer-events: auto;
+        }
+        #instrument-context-options {
+            display: grid;
+            gap: 6px;
+        }
+        .instrument-context-card {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 6px;
+            background: rgba(15, 20, 24, 0.95);
+            color: #e8e8e8;
+            font-size: 0.68rem;
+            letter-spacing: 0.6px;
+            text-align: left;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .instrument-context-card:hover { border-color: rgba(0,255,204,0.6); background: rgba(0,255,204,0.08); }
+        .instrument-context-card.active { border-color: var(--neon-green); background: rgba(0,255,204,0.18); color: #fff; }
+        #note-map-btn {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 34px;
+            height: 34px;
+            z-index: 35;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.24);
+            background: rgba(6, 12, 18, 0.95);
+            color: #fff;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0;
+            display: none;
+            pointer-events: auto;
+        }
+        #note-map-dialog {
+            display: none;
+            z-index: 36;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(520px, 92vw);
+            pointer-events: auto;
+        }
+        .note-map-grid {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .note-map-col h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            color: #9a9a9a;
+        }
+        .note-map-row { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .note-map-row label { font-size: 0.62rem; color: #b0b0b0; }
+
         .bar-container { margin-bottom: 8px; }
         .bar-label { display: flex; justify-content: space-between; font-size: 0.6rem; margin-bottom: 3px; color: #aaa; font-family: monospace;}
         .bar-bg { width: 100%; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
@@ -194,12 +271,12 @@
     </div>
 
     <div id="hud-container">
-        <div class="hud-module" id="hud-left">
+        <div class="hud-module note-card-selectable" id="hud-left">
             <h2 style="font-size: 0.6rem; color: #666; margin: 0;">BASS_SYNTH</h2>
             <div class="note-display" id="bass-note">--</div>
             <div id="bass-coords" style="font-size: 0.6rem; color: #ff00ff88; margin-top: 5px;">PAN:0%</div>
         </div>
-        <div class="hud-module" id="hud-right">
+        <div class="hud-module note-card-selectable" id="hud-right">
             <h2 style="font-size: 0.6rem; color: #666; margin: 0;">LEAD_SYNTH</h2>
             <div class="note-display" id="lead-note">--</div>
             <div id="lead-coords" style="font-size: 0.6rem; color: #00bfff88; margin-top: 5px;">PAN:0%</div>
@@ -231,6 +308,27 @@
         </div>
     </div>
 
+    <div id="instrument-context-menu">
+        <div id="instrument-context-options"></div>
+    </div>
+
+    <button type="button" id="note-map-btn" title="Customize note mapping">🎶</button>
+    <div class="glass-panel" id="note-map-dialog">
+        <h2 style="font-size: 0.78rem; margin: 0; letter-spacing: 1.5px;">NOTE_MAPPING</h2>
+        <p style="font-size: 0.62rem; color: #8a8a8a; margin: 6px 0 0 0;">Used by HAND fingers and DANCE levels</p>
+        <div class="note-map-grid">
+            <div class="note-map-col">
+                <h3>BASS</h3>
+                <div id="bass-note-map-rows"></div>
+            </div>
+            <div class="note-map-col">
+                <h3>LEAD</h3>
+                <div id="lead-note-map-rows"></div>
+            </div>
+        </div>
+        <button type="button" id="note-map-close" style="margin-top: 10px; padding: 9px; font-size: 0.72rem;">CLOSE</button>
+    </div>
+
     <script type="module">
         import {
             HandLandmarker,
@@ -254,20 +352,64 @@
         let lastDanceInferMs = 0;
         const HAND_INFER_INTERVAL_MS = 50;  // ~20 FPS vision, smoother audio
         const DANCE_INFER_INTERVAL_MS = 33; // ~30 FPS vision
+        const DANCE_POSE_HOLD_MS = 260;
+        let lastDancePoseResult = null;
+        let lastDancePoseResultAt = 0;
 
-        document.getElementById("mode-hand").addEventListener("click", () => { currentMode = "hand"; document.getElementById("mode-hand").classList.add("active"); document.getElementById("mode-dance").classList.remove("active"); document.getElementById("instruction-hand").style.display = ""; document.getElementById("instruction-dance").style.display = "none"; });
-        document.getElementById("mode-dance").addEventListener("click", () => { currentMode = "dance"; document.getElementById("mode-dance").classList.add("active"); document.getElementById("mode-hand").classList.remove("active"); document.getElementById("instruction-dance").style.display = ""; document.getElementById("instruction-hand").style.display = "none"; });
+        document.getElementById("mode-hand").addEventListener("click", () => {
+            currentMode = "hand";
+            document.getElementById("mode-hand").classList.add("active");
+            document.getElementById("mode-dance").classList.remove("active");
+            document.getElementById("instruction-hand").style.display = "";
+            document.getElementById("instruction-dance").style.display = "none";
+            refreshInstrumentCardLabels();
+        });
+        document.getElementById("mode-dance").addEventListener("click", () => {
+            currentMode = "dance";
+            document.getElementById("mode-dance").classList.add("active");
+            document.getElementById("mode-hand").classList.remove("active");
+            document.getElementById("instruction-dance").style.display = "";
+            document.getElementById("instruction-hand").style.display = "none";
+            refreshInstrumentCardLabels();
+        });
 
         // --- AUDIO ENGINE ---
         let audioCtx, masterFilter, distortion, delayNode, delayGain, analyser, drumGain, masterGain, compressor;
         let pannerBass, pannerLead, brightnessFilter;
 
-        const bassScale = [65.41, 77.78, 87.31, 98.00]; 
-        const leadScale = [261.63, 311.13, 349.23, 392.00]; 
-        const bassNames = ["C2", "Eb2", "F2", "G2"];
-        const leadNames = ["C4", "Eb4", "F4", "G4"];
+        const BASS_NOTE_OPTIONS = [
+            { name: "C2", freq: 65.41 }, { name: "D2", freq: 73.42 }, { name: "Eb2", freq: 77.78 }, { name: "F2", freq: 87.31 },
+            { name: "G2", freq: 98.0 }, { name: "A2", freq: 110.0 }, { name: "Bb2", freq: 116.54 }, { name: "C3", freq: 130.81 }
+        ];
+        const LEAD_NOTE_OPTIONS = [
+            { name: "C4", freq: 261.63 }, { name: "D4", freq: 293.66 }, { name: "Eb4", freq: 311.13 }, { name: "F4", freq: 349.23 },
+            { name: "G4", freq: 392.0 }, { name: "A4", freq: 440.0 }, { name: "Bb4", freq: 466.16 }, { name: "C5", freq: 523.25 }
+        ];
+        let bassNoteMap = ["C2", "Eb2", "F2", "G2"];
+        let leadNoteMap = ["C4", "Eb4", "F4", "G4"];
         const bassColors = ["#ff8be9", "#ff55dd", "#ff22cc", "#ff00ff"];
         const leadColors = ["#9fe8ff", "#66d4ff", "#2bbfff", "#00bfff"];
+        const instrumentPresets = {
+            bass: [
+                { id: "tb-square", label: "TB SQUARE", short: "TB-SQ", type: "square", detune: -6, attack: 0.008, sub: 0.18 },
+                { id: "acid-saw", label: "ACID SAW", short: "ACID", type: "sawtooth", detune: -2, attack: 0.006, sub: 0.08 },
+                { id: "sub-rumble", label: "SUB RUMBLE", short: "SUB", type: "triangle", detune: -10, attack: 0.012, sub: 0.3 },
+                { id: "dirty-pulse", label: "DIRTY PULSE", short: "PULSE", type: "square", detune: 2, attack: 0.004, sub: 0.12 },
+                { id: "rubber-bass", label: "RUBBER BASS", short: "RUBR", type: "sawtooth", detune: -14, attack: 0.01, sub: 0.22 },
+                { id: "hoover-sub", label: "HOOVER SUB", short: "HOVR", type: "triangle", detune: -20, attack: 0.013, sub: 0.35 },
+                { id: "clip-drive", label: "CLIP DRIVE", short: "CLIP", type: "square", detune: 6, attack: 0.003, sub: 0.14 }
+            ],
+            lead: [
+                { id: "acid-saw", label: "ACID SAW", short: "ACID", type: "sawtooth", detune: 5, attack: 0.004, sub: 0 },
+                { id: "reso-square", label: "RESO SQUARE", short: "RESO", type: "square", detune: 1, attack: 0.005, sub: 0 },
+                { id: "bright-pluck", label: "BRIGHT PLUCK", short: "PLUCK", type: "triangle", detune: 9, attack: 0.002, sub: 0 },
+                { id: "electro-pulse", label: "ELECTRO PULSE", short: "ELEC", type: "square", detune: 12, attack: 0.003, sub: 0 },
+                { id: "reso-whine", label: "RESO WHINE", short: "WHNE", type: "sawtooth", detune: 17, attack: 0.002, sub: 0 },
+                { id: "glass-chirp", label: "GLASS CHIRP", short: "GLAS", type: "triangle", detune: 20, attack: 0.001, sub: 0 },
+                { id: "acid-hook", label: "ACID HOOK", short: "HOOK", type: "square", detune: 7, attack: 0.003, sub: 0 }
+            ]
+        };
+        let selectedInstruments = { bass: "tb-square", lead: "acid-saw" };
 
         let state = {
             mouthOpen: 0, headTilt: 0, armSpan: 0,
@@ -281,11 +423,125 @@
             rWristPos: null
         };
         let floatingNotes = [];
-        const MAX_FLOATING_NOTES = 18;
-        const VISUAL_NOTE_COOLDOWN_SEC = 0.14;
+        const MAX_FLOATING_NOTES = 10;
+        const VISUAL_NOTE_COOLDOWN_SEC = 0.24;
+        const DANCE_NOTE_HOLD_SEC = 0.22;
         let lastBassVisualAt = -999;
         let lastLeadVisualAt = -999;
+        let lastDanceBassDetectAt = -999;
+        let lastDanceLeadDetectAt = -999;
         let prevPose = null;
+
+        const hudLeft = document.getElementById("hud-left");
+        const hudRight = document.getElementById("hud-right");
+        const instrumentContextMenu = document.getElementById("instrument-context-menu");
+        const instrumentContextOptions = document.getElementById("instrument-context-options");
+        const noteMapBtn = document.getElementById("note-map-btn");
+        const noteMapDialog = document.getElementById("note-map-dialog");
+        const noteMapClose = document.getElementById("note-map-close");
+        const bassNoteMapRows = document.getElementById("bass-note-map-rows");
+        const leadNoteMapRows = document.getElementById("lead-note-map-rows");
+        let contextTrack = "bass";
+
+        function getSelectedPreset(track) {
+            const bank = instrumentPresets[track] || [];
+            return bank.find((p) => p.id === selectedInstruments[track]) || bank[0];
+        }
+
+        function getNoteByName(options, name) {
+            return options.find((n) => n.name === name) || options[0];
+        }
+        function getBassNote(slot) { return getNoteByName(BASS_NOTE_OPTIONS, bassNoteMap[slot]); }
+        function getLeadNote(slot) { return getNoteByName(LEAD_NOTE_OPTIONS, leadNoteMap[slot]); }
+
+        function refreshInstrumentCardLabels() {
+            const bassPreset = getSelectedPreset("bass");
+            const leadPreset = getSelectedPreset("lead");
+            if (currentMode === "dance") {
+                document.querySelector("#hud-left h2").textContent = `L_ARM : ${bassPreset.short}`;
+                document.querySelector("#hud-right h2").textContent = `R_ARM : ${leadPreset.short}`;
+            } else {
+                document.querySelector("#hud-left h2").textContent = `BASS_${bassPreset.short}`;
+                document.querySelector("#hud-right h2").textContent = `LEAD_${leadPreset.short}`;
+            }
+        }
+
+        function openInstrumentContext(track, event) {
+            contextTrack = track;
+            instrumentContextOptions.innerHTML = "";
+            for (const preset of instrumentPresets[track]) {
+                const card = document.createElement("button");
+                card.type = "button";
+                card.className = `instrument-context-card${selectedInstruments[track] === preset.id ? " active" : ""}`;
+                card.textContent = preset.label;
+                card.addEventListener("click", () => {
+                    selectedInstruments[track] = preset.id;
+                    refreshInstrumentCardLabels();
+                    hideInstrumentContext();
+                });
+                instrumentContextOptions.appendChild(card);
+            }
+            const maxLeft = window.innerWidth - 240;
+            const maxTop = window.innerHeight - 70;
+            instrumentContextMenu.style.left = `${Math.max(10, Math.min(event.clientX + 8, maxLeft))}px`;
+            instrumentContextMenu.style.top = `${Math.max(10, Math.min(event.clientY + 8, maxTop))}px`;
+            instrumentContextMenu.style.display = "block";
+        }
+
+        function hideInstrumentContext() {
+            instrumentContextMenu.style.display = "none";
+        }
+
+        function populateNoteMapRows(container, options, mapRef, labels) {
+            container.innerHTML = "";
+            for (let i = 0; i < 4; i++) {
+                const row = document.createElement("div");
+                row.className = "note-map-row";
+                const label = document.createElement("label");
+                label.textContent = labels[i];
+                const select = document.createElement("select");
+                select.className = "instrument-select";
+                for (const optNote of options) {
+                    const opt = document.createElement("option");
+                    opt.value = optNote.name;
+                    opt.textContent = optNote.name;
+                    select.appendChild(opt);
+                }
+                select.value = mapRef[i];
+                select.addEventListener("change", (e) => { mapRef[i] = e.target.value; });
+                row.appendChild(label);
+                row.appendChild(select);
+                container.appendChild(row);
+            }
+        }
+
+        function openNoteMapDialog() {
+            populateNoteMapRows(
+                bassNoteMapRows,
+                BASS_NOTE_OPTIONS,
+                bassNoteMap,
+                ["Finger 1", "Finger 2", "Finger 3", "Finger 4"]
+            );
+            populateNoteMapRows(
+                leadNoteMapRows,
+                LEAD_NOTE_OPTIONS,
+                leadNoteMap,
+                ["Finger 1", "Finger 2", "Finger 3", "Finger 4"]
+            );
+            noteMapDialog.style.display = "block";
+        }
+
+        document.addEventListener("click", (e) => {
+            if (!instrumentContextMenu.contains(e.target) && !hudLeft.contains(e.target) && !hudRight.contains(e.target)) {
+                hideInstrumentContext();
+            }
+        });
+
+        noteMapBtn.addEventListener("click", () => openNoteMapDialog());
+        noteMapClose.addEventListener("click", () => { noteMapDialog.style.display = "none"; });
+        hudLeft.addEventListener("click", (e) => openInstrumentContext("bass", e));
+        hudRight.addEventListener("click", (e) => openInstrumentContext("lead", e));
+        refreshInstrumentCardLabels();
 
         function makeDistortionCurve(amount) {
             const n_samples = 44100;
@@ -389,19 +645,23 @@
             }
 
             if (state.bassIndex !== -1 && step % 2 === 0) {
-                triggerSynthNote(bassScale[state.bassIndex], "square", 0.2, currentMode === "dance" ? 0.15 : 0.1, time, pannerBass);
+                const bassNote = getBassNote(state.bassIndex);
+                triggerSynthNote("bass", bassNote.freq, 0.2, currentMode === "dance" ? 0.15 : 0.1, time, pannerBass);
                 if (currentMode === "dance" && state.lWristPos && (time - lastBassVisualAt) >= VISUAL_NOTE_COOLDOWN_SEC) {
-                    if (floatingNotes.length >= MAX_FLOATING_NOTES) floatingNotes.shift();
-                    floatingNotes.push({ x: state.lWristPos.x, y: state.lWristPos.y, text: bassNames[state.bassIndex], color: bassColors[state.bassIndex], life: 1.0 });
-                    lastBassVisualAt = time;
+                    if (floatingNotes.length < MAX_FLOATING_NOTES) {
+                        floatingNotes.push({ x: state.lWristPos.x, y: state.lWristPos.y, text: bassNote.name, color: bassColors[state.bassIndex], life: 1.0 });
+                        lastBassVisualAt = time;
+                    }
                 }
             }
             if (state.leadIndex !== -1) {
-                triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.12, currentMode === "dance" ? 0.1 : 0.05, time, pannerLead);
+                const leadNote = getLeadNote(state.leadIndex);
+                triggerSynthNote("lead", leadNote.freq, 0.12, currentMode === "dance" ? 0.1 : 0.05, time, pannerLead);
                 if (currentMode === "dance" && state.rWristPos && (time - lastLeadVisualAt) >= VISUAL_NOTE_COOLDOWN_SEC) {
-                    if (floatingNotes.length >= MAX_FLOATING_NOTES) floatingNotes.shift();
-                    floatingNotes.push({ x: state.rWristPos.x, y: state.rWristPos.y, text: leadNames[state.leadIndex], color: leadColors[state.leadIndex], life: 1.0 });
-                    lastLeadVisualAt = time;
+                    if (floatingNotes.length < MAX_FLOATING_NOTES) {
+                        floatingNotes.push({ x: state.rWristPos.x, y: state.rWristPos.y, text: leadNote.name, color: leadColors[state.leadIndex], life: 1.0 });
+                        lastLeadVisualAt = time;
+                    }
                 }
             }
         }
@@ -467,13 +727,29 @@
             osc.start(time); osc.stop(time + decayTime);
         }
 
-        function triggerSynthNote(freq, type, vol, dur, time, panner) {
+        function triggerSynthNote(track, freq, vol, dur, time, panner) {
+            const preset = getSelectedPreset(track);
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
-            osc.type = type; osc.frequency.value = freq;
+            osc.type = preset.type;
+            osc.frequency.value = freq;
+            osc.detune.value = preset.detune || 0;
             osc.connect(g); g.connect(panner); panner.connect(masterFilter);
+
+            if (preset.sub && preset.sub > 0) {
+                const subOsc = audioCtx.createOscillator();
+                const subGain = audioCtx.createGain();
+                subOsc.type = "triangle";
+                subOsc.frequency.value = freq * 0.5;
+                subGain.gain.value = preset.sub;
+                subOsc.connect(subGain);
+                subGain.connect(g);
+                subOsc.start(time);
+                subOsc.stop(time + dur);
+            }
+
             g.gain.setValueAtTime(0, time);
-            g.gain.linearRampToValueAtTime(vol, time + 0.01);
+            g.gain.linearRampToValueAtTime(vol, time + (preset.attack || 0.01));
             g.gain.exponentialRampToValueAtTime(0.01, time + dur);
             osc.start(time); osc.stop(time + dur);
         }
@@ -497,7 +773,10 @@
                         delegate: "CPU" 
                     },
                     runningMode: "VIDEO",
-                    numPoses: 1
+                    numPoses: 1,
+                    minPoseDetectionConfidence: 0.35,
+                    minPosePresenceConfidence: 0.35,
+                    minTrackingConfidence: 0.35
                 });
                 
                 drawingUtils = new DrawingUtils(aiCtx);
@@ -514,17 +793,10 @@
             await initAudio();
             document.getElementById("intro-panel").style.display = "none";
             document.getElementById("hud-container").style.display = "block";
+            noteMapBtn.style.display = "block";
             document.getElementById("hud-bars-hand").style.display = currentMode === "hand" ? "" : "none";
             document.getElementById("hud-bars-dance").style.display = currentMode === "dance" ? "" : "none";
-            const hudLeftTitle = document.querySelector("#hud-left h2");
-            const hudRightTitle = document.querySelector("#hud-right h2");
-            if (currentMode === "dance") {
-                hudLeftTitle.textContent = "L_ARM : BASS";
-                hudRightTitle.textContent = "R_ARM : LEAD";
-            } else {
-                hudLeftTitle.textContent = "BASS_SYNTH";
-                hudRightTitle.textContent = "LEAD_SYNTH";
-            }
+            refreshInstrumentCardLabels();
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { width: 640, height: 360, frameRate: { ideal: 30 } } 
@@ -551,9 +823,18 @@
                     if (now - lastDanceInferMs >= DANCE_INFER_INTERVAL_MS) {
                         lastDanceInferMs = now;
                         const poses = poseLandmarker.detectForVideo(video, now);
-                        processDance(poses);
-                        drawNotes();
+                        if (poses.landmarks && poses.landmarks.length > 0) {
+                            lastDancePoseResult = poses;
+                            lastDancePoseResultAt = now;
+                        }
                     }
+                    const hasFreshDancePose = lastDancePoseResult && (now - lastDancePoseResultAt) <= DANCE_POSE_HOLD_MS;
+                    if (hasFreshDancePose) {
+                        processDance(lastDancePoseResult);
+                    } else {
+                        processDance({ landmarks: [] });
+                    }
+                    drawNotes();
                 } else {
                     if (now - lastHandInferMs >= HAND_INFER_INTERVAL_MS) {
                         lastHandInferMs = now;
@@ -577,6 +858,25 @@
                 }
             }
             return count > 0 ? dist / count : 0;
+        }
+
+        function getBandIndexFromRatio(ratio) {
+            if (ratio <= 0.2) return -1;
+            if (ratio < 0.8) return 0;
+            if (ratio < 1.4) return 1;
+            if (ratio < 2.0) return 2;
+            return 3;
+        }
+
+        function getStableBandIndex(ratio, prevIndex) {
+            const raw = getBandIndexFromRatio(ratio);
+            if (prevIndex === -1 || raw === prevIndex || raw === -1) return raw;
+            // Hysteresis around boundaries to prevent rapid note flipping.
+            const boundaries = [0.8, 1.4, 2.0];
+            const boundary = boundaries[Math.min(prevIndex, raw)] ?? boundaries[boundaries.length - 1];
+            const margin = 0.12;
+            if (Math.abs(ratio - boundary) < margin) return prevIndex;
+            return raw;
         }
 
         function drawNotes() {
@@ -620,8 +920,8 @@
 
         function processDance(poses) {
             const time = audioCtx.currentTime;
-            state.bassIndex = -1;
-            state.leadIndex = -1;
+            let detectedBassIndex = -1;
+            let detectedLeadIndex = -1;
             state.lWristPos = null;
             state.rWristPos = null;
 
@@ -652,19 +952,9 @@
                 const torsoH = Math.max(0.1, Math.abs(((lHip.y + rHip.y) / 2) - ((lShoulder.y + rShoulder.y) / 2)));
 
                 const lRatio = (lHip.y - lWrist.y) / torsoH;
-                if (lRatio > 0.2) {
-                    if (lRatio < 0.8) state.bassIndex = 0;
-                    else if (lRatio < 1.4) state.bassIndex = 1;
-                    else if (lRatio < 2.0) state.bassIndex = 2;
-                    else state.bassIndex = 3;
-                }
+                detectedBassIndex = getStableBandIndex(lRatio, state.bassIndex);
                 const rRatio = (rHip.y - rWrist.y) / torsoH;
-                if (rRatio > 0.2) {
-                    if (rRatio < 0.8) state.leadIndex = 0;
-                    else if (rRatio < 1.4) state.leadIndex = 1;
-                    else if (rRatio < 2.0) state.leadIndex = 2;
-                    else state.leadIndex = 3;
-                }
+                detectedLeadIndex = getStableBandIndex(rRatio, state.leadIndex);
 
                 const lPan = Math.max(-1, Math.min(1, (0.5 - lWrist.x) * 2));
                 const rPan = Math.max(-1, Math.min(1, (0.5 - rWrist.x) * 2));
@@ -714,10 +1004,24 @@
                 state.energy *= 0.95;
             }
 
+            // Hold last dance note briefly to avoid HUD flicker on tracking jitter.
+            if (detectedBassIndex !== -1) {
+                state.bassIndex = detectedBassIndex;
+                lastDanceBassDetectAt = time;
+            } else if (time - lastDanceBassDetectAt > DANCE_NOTE_HOLD_SEC) {
+                state.bassIndex = -1;
+            }
+            if (detectedLeadIndex !== -1) {
+                state.leadIndex = detectedLeadIndex;
+                lastDanceLeadDetectAt = time;
+            } else if (time - lastDanceLeadDetectAt > DANCE_NOTE_HOLD_SEC) {
+                state.leadIndex = -1;
+            }
+
             const bassNoteEl = document.getElementById("bass-note");
             const leadNoteEl = document.getElementById("lead-note");
-            bassNoteEl.innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
-            leadNoteEl.innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
+            bassNoteEl.innerText = state.bassIndex !== -1 ? getBassNote(state.bassIndex).name : "--";
+            leadNoteEl.innerText = state.leadIndex !== -1 ? getLeadNote(state.leadIndex).name : "--";
             bassNoteEl.style.color = state.bassIndex !== -1 ? bassColors[state.bassIndex] : "var(--neon-pink)";
             leadNoteEl.style.color = state.leadIndex !== -1 ? leadColors[state.leadIndex] : "var(--neon-cyan)";
             bassNoteEl.style.textShadow = state.bassIndex !== -1 ? `0 0 8px ${bassColors[state.bassIndex]}aa` : "0 0 8px rgba(255,0,255,0.5)";
@@ -767,8 +1071,8 @@
 
             const bassNoteEl = document.getElementById("bass-note");
             const leadNoteEl = document.getElementById("lead-note");
-            bassNoteEl.innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
-            leadNoteEl.innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
+            bassNoteEl.innerText = state.bassIndex !== -1 ? getBassNote(state.bassIndex).name : "--";
+            leadNoteEl.innerText = state.leadIndex !== -1 ? getLeadNote(state.leadIndex).name : "--";
             bassNoteEl.style.color = state.bassIndex !== -1 ? bassColors[state.bassIndex] : "var(--neon-pink)";
             leadNoteEl.style.color = state.leadIndex !== -1 ? leadColors[state.leadIndex] : "var(--neon-cyan)";
             bassNoteEl.style.textShadow = state.bassIndex !== -1 ? `0 0 8px ${bassColors[state.bassIndex]}aa` : "0 0 8px rgba(255,0,255,0.5)";
