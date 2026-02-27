@@ -100,6 +100,17 @@
         button:hover:not(:disabled) { background: #fff; transform: scale(1.02); }
         button:disabled { background: #1a1a1a; color: #444; cursor: not-allowed; }
 
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            font-size: 0.85rem;
+            background: rgba(255,255,255,0.08);
+            color: #888;
+            border: 1px solid var(--glass-border);
+        }
+        .mode-btn.active { background: var(--neon-green); color: #000; border-color: var(--neon-green); }
+        .mode-btn:not(.active):hover { background: rgba(255,255,255,0.12); color: #fff; }
+
         .bar-container { margin-bottom: 8px; }
         .bar-label { display: flex; justify-content: space-between; font-size: 0.6rem; margin-bottom: 3px; color: #aaa; font-family: monospace;}
         .bar-bg { width: 100%; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
@@ -160,12 +171,24 @@
     <canvas id="oscilloscope"></canvas>
 
     <div class="glass-panel" id="intro-panel">
-        <h1>ACID_TECHNO_PRO</h1>
-        <div class="instruction-grid">
+        <h1>ACID_VISION_PRO</h1>
+        <p style="font-size: 0.7rem; color: #666; margin: 0 0 10px 0;">Choose mode</p>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button type="button" id="mode-hand" class="mode-btn active">HAND</button>
+            <button type="button" id="mode-dance" class="mode-btn">DANCE</button>
+        </div>
+        <div class="instruction-grid" id="instruction-hand">
             <div><b>L Hand:</b> Bass + Panning</div>
             <div><b>R Hand:</b> Lead + Brightness</div>
-            <div><b>Wide Arms:</b> Drum Energy</div>
-            <div><b>Mouth:</b> Acid Filter</div>
+            <div><b>Thumb Link:</b> Drum Energy</div>
+            <div><b>Hand Height:</b> Acid Filter</div>
+        </div>
+        <div class="instruction-grid" id="instruction-dance" style="display: none;">
+            <div><b>L Arm Raise:</b> Bass Pitch</div>
+            <div><b>R Arm Raise:</b> Lead Pitch</div>
+            <div><b>Arm Span:</b> Acid Filter</div>
+            <div><b>Dance Speed:</b> Drum Energy</div>
+            <div style="grid-column: span 2; text-align: center; color: var(--neon-green);"><b>Shoulder Lean:</b> Squelch / Distortion</div>
         </div>
         <button id="start-btn" disabled>BOOTING_AI...</button>
     </div>
@@ -182,29 +205,36 @@
             <div id="lead-coords" style="font-size: 0.6rem; color: #00bfff88; margin-top: 5px;">PAN:0%</div>
         </div>
         <div class="hud-module" id="hud-center">
-            <div class="bar-container">
-                <div class="bar-label"><span>WAH (MOUTH)</span><span id="val-mouth">0%</span></div>
-                <div class="bar-bg"><div class="bar-fill" id="fill-mouth"></div></div>
+            <div id="hud-bars-hand">
+                <div class="bar-container">
+                    <div class="bar-label"><span>WAH (HAND POS)</span><span id="val-mouth">0%</span></div>
+                    <div class="bar-bg"><div class="bar-fill" id="fill-mouth"></div></div>
+                </div>
+                <div class="bar-container">
+                    <div class="bar-label"><span>SQUELCH (HAND TILT)</span><span id="val-tilt">0%</span></div>
+                    <div class="bar-bg"><div class="bar-fill" id="fill-tilt"></div></div>
+                </div>
+                <div class="bar-container">
+                    <div class="bar-label"><span>DRUMS (THUMB LINK)</span><span id="val-dist">0%</span></div>
+                    <div class="bar-bg"><div class="bar-fill" id="fill-dist"></div></div>
+                </div>
+                <div class="bar-container">
+                    <div class="bar-label"><span>BRITE (Y-POS)</span><span id="val-pos">0%</span></div>
+                    <div class="bar-bg"><div class="bar-fill" id="fill-pos"></div></div>
+                </div>
             </div>
-            <div class="bar-container">
-                <div class="bar-label"><span>SQUELCH (TILT)</span><span id="val-tilt">0%</span></div>
-                <div class="bar-bg"><div class="bar-fill" id="fill-tilt"></div></div>
-            </div>
-            <div class="bar-container">
-                <div class="bar-label"><span>DRUMS (SPAN)</span><span id="val-dist">0%</span></div>
-                <div class="bar-bg"><div class="bar-fill" id="fill-dist"></div></div>
-            </div>
-            <div class="bar-container">
-                <div class="bar-label"><span>BRITE (Y-POS)</span><span id="val-pos">0%</span></div>
-                <div class="bar-bg"><div class="bar-fill" id="fill-pos"></div></div>
+            <div id="hud-bars-dance" style="display: none;">
+                <div style="text-align: center; margin-top: 12px;">
+                    <span id="drum-mode" style="color: var(--neon-green); font-weight: bold; font-size: 0.9rem; letter-spacing: 2px;">MODE: TECHNO</span>
+                </div>
             </div>
         </div>
     </div>
 
     <script type="module">
         import {
-            FaceLandmarker,
             HandLandmarker,
+            PoseLandmarker,
             FilesetResolver,
             DrawingUtils
         } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
@@ -217,8 +247,16 @@
         const startBtn = document.getElementById("start-btn");
         const loader = document.getElementById("loading-overlay");
 
-        let faceLandmarker, handLandmarker, drawingUtils;
+        let handLandmarker, poseLandmarker, drawingUtils;
         let lastVideoTime = -1;
+        let currentMode = "hand"; // "hand" | "dance"
+        let lastHandInferMs = 0;
+        let lastDanceInferMs = 0;
+        const HAND_INFER_INTERVAL_MS = 50;  // ~20 FPS vision, smoother audio
+        const DANCE_INFER_INTERVAL_MS = 33; // ~30 FPS vision
+
+        document.getElementById("mode-hand").addEventListener("click", () => { currentMode = "hand"; document.getElementById("mode-hand").classList.add("active"); document.getElementById("mode-dance").classList.remove("active"); document.getElementById("instruction-hand").style.display = ""; document.getElementById("instruction-dance").style.display = "none"; });
+        document.getElementById("mode-dance").addEventListener("click", () => { currentMode = "dance"; document.getElementById("mode-dance").classList.add("active"); document.getElementById("mode-hand").classList.remove("active"); document.getElementById("instruction-dance").style.display = ""; document.getElementById("instruction-hand").style.display = "none"; });
 
         // --- AUDIO ENGINE ---
         let audioCtx, masterFilter, distortion, delayNode, delayGain, analyser, drumGain, masterGain, compressor;
@@ -228,14 +266,26 @@
         const leadScale = [261.63, 311.13, 349.23, 392.00]; 
         const bassNames = ["C2", "Eb2", "F2", "G2"];
         const leadNames = ["C4", "Eb4", "F4", "G4"];
+        const bassColors = ["#ff8be9", "#ff55dd", "#ff22cc", "#ff00ff"];
+        const leadColors = ["#9fe8ff", "#66d4ff", "#2bbfff", "#00bfff"];
 
         let state = {
             mouthOpen: 0, headTilt: 0, armSpan: 0,
             bassIndex: -1, leadIndex: -1,
             lHand: { x: 0.5, y: 0.5 },
             rHand: { x: 0.5, y: 0.5 },
-            pulse: 0
+            pulse: 0,
+            energy: 0,
+            drumKit: 0,
+            lWristPos: null,
+            rWristPos: null
         };
+        let floatingNotes = [];
+        const MAX_FLOATING_NOTES = 18;
+        const VISUAL_NOTE_COOLDOWN_SEC = 0.14;
+        let lastBassVisualAt = -999;
+        let lastLeadVisualAt = -999;
+        let prevPose = null;
 
         function makeDistortionCurve(amount) {
             const n_samples = 44100;
@@ -331,67 +381,90 @@
             if (step % 4 === 0) triggerTechnoKick(time);
             if (step === 4 || step === 12) triggerSnare(time);
             
+            const hatDrive = currentMode === "dance" ? state.energy : state.armSpan;
             if (step % 4 === 2) {
-                triggerHat(time, 0.5); 
-            } else if (step % 2 !== 0 && state.armSpan > 0.4) {
-                triggerHat(time, 0.2 * state.armSpan); 
+                triggerHat(time, currentMode === "dance" ? 0.4 : 0.5);
+            } else if (step % 2 !== 0 && (currentMode === "dance" ? hatDrive > 0.05 : state.armSpan > 0.4)) {
+                triggerHat(time, currentMode === "dance" ? 0.3 * Math.min(1, state.energy * 10) : 0.2 * state.armSpan);
             }
 
-            if (state.bassIndex !== -1 && step % 2 === 0) triggerSynthNote(bassScale[state.bassIndex], "square", 0.2, 0.1, time, pannerBass);
-            if (state.leadIndex !== -1) triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.12, 0.05, time, pannerLead);
+            if (state.bassIndex !== -1 && step % 2 === 0) {
+                triggerSynthNote(bassScale[state.bassIndex], "square", 0.2, currentMode === "dance" ? 0.15 : 0.1, time, pannerBass);
+                if (currentMode === "dance" && state.lWristPos && (time - lastBassVisualAt) >= VISUAL_NOTE_COOLDOWN_SEC) {
+                    if (floatingNotes.length >= MAX_FLOATING_NOTES) floatingNotes.shift();
+                    floatingNotes.push({ x: state.lWristPos.x, y: state.lWristPos.y, text: bassNames[state.bassIndex], color: bassColors[state.bassIndex], life: 1.0 });
+                    lastBassVisualAt = time;
+                }
+            }
+            if (state.leadIndex !== -1) {
+                triggerSynthNote(leadScale[state.leadIndex], "sawtooth", 0.12, currentMode === "dance" ? 0.1 : 0.05, time, pannerLead);
+                if (currentMode === "dance" && state.rWristPos && (time - lastLeadVisualAt) >= VISUAL_NOTE_COOLDOWN_SEC) {
+                    if (floatingNotes.length >= MAX_FLOATING_NOTES) floatingNotes.shift();
+                    floatingNotes.push({ x: state.rWristPos.x, y: state.rWristPos.y, text: leadNames[state.leadIndex], color: leadColors[state.leadIndex], life: 1.0 });
+                    lastLeadVisualAt = time;
+                }
+            }
         }
 
         function triggerTechnoKick(time) {
+            const kit = state.drumKit || 0;
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.connect(g); g.connect(drumGain);
-            osc.frequency.setValueAtTime(160, time);
-            osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
-            g.gain.setValueAtTime(1.1, time);
+            const startFreq = kit === 1 ? 300 : (kit === 2 ? 90 : 160);
+            const endFreq = kit === 1 ? 80 : (kit === 2 ? 30 : 45);
+            osc.frequency.setValueAtTime(startFreq, time);
+            osc.frequency.exponentialRampToValueAtTime(endFreq, time + (kit === 2 ? 0.15 : 0.12));
+            g.gain.setValueAtTime(kit === 2 ? 1.5 : 1.1, time);
             g.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
             osc.start(time); osc.stop(time + 0.4);
 
             const clickOsc = audioCtx.createOscillator();
             const clickGain = audioCtx.createGain();
-            clickOsc.type = 'square';
+            clickOsc.type = kit === 1 ? "sawtooth" : "square";
             clickOsc.connect(clickGain); clickGain.connect(drumGain);
-            clickOsc.frequency.setValueAtTime(3000, time);
+            clickOsc.frequency.setValueAtTime(kit === 1 ? 5000 : 3000, time);
             clickOsc.frequency.exponentialRampToValueAtTime(100, time + 0.02);
-            clickGain.gain.setValueAtTime(0.35, time);
+            clickGain.gain.setValueAtTime(kit === 1 ? 0.4 : 0.35, time);
             clickGain.gain.exponentialRampToValueAtTime(0.01, time + 0.02);
             clickOsc.start(time); clickOsc.stop(time + 0.02);
         }
 
         function triggerSnare(time) {
-            const bufferSize = audioCtx.sampleRate * 0.12;
+            const kit = state.drumKit || 0;
+            const bufferSize = audioCtx.sampleRate * (kit === 2 ? 0.25 : 0.12);
             const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
             const data = buffer.getChannelData(0);
             for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
             const noise = audioCtx.createBufferSource();
             noise.buffer = buffer;
             const filter = audioCtx.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.value = 1200;
-            filter.Q.value = 0.6;
+            filter.type = kit === 1 ? "highpass" : "bandpass";
+            filter.frequency.value = kit === 1 ? 3500 : (kit === 2 ? 800 : 1200);
+            filter.Q.value = kit === 1 ? 1.5 : 0.6;
             const g = audioCtx.createGain();
-            g.gain.setValueAtTime(0.6, time);
-            g.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+            g.gain.setValueAtTime(kit === 1 ? 0.9 : 0.6, time);
+            g.gain.exponentialRampToValueAtTime(0.01, time + (kit === 2 ? 0.25 : 0.12));
             noise.connect(filter);
             filter.connect(g);
             g.connect(drumGain);
             noise.start(time);
-            noise.stop(time + 0.12);
+            noise.stop(time + (kit === 2 ? 0.25 : 0.12));
         }
 
         function triggerHat(time, vol) {
+            const kit = state.drumKit || 0;
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             const f = audioCtx.createBiquadFilter();
-            osc.type = 'square'; osc.connect(f); f.connect(g); g.connect(drumGain);
-            f.type = 'highpass'; f.frequency.value = 7500;
+            osc.type = kit === 1 ? "sawtooth" : "square";
+            osc.connect(f); f.connect(g); g.connect(drumGain);
+            f.type = "highpass";
+            f.frequency.value = kit === 1 ? 10000 : (kit === 2 ? 6000 : 7500);
+            const decayTime = kit === 2 ? 0.08 : 0.05;
             g.gain.setValueAtTime(vol, time);
-            g.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
-            osc.start(time); osc.stop(time + 0.05);
+            g.gain.exponentialRampToValueAtTime(0.01, time + decayTime);
+            osc.start(time); osc.stop(time + decayTime);
         }
 
         function triggerSynthNote(freq, type, vol, dur, time, panner) {
@@ -409,16 +482,6 @@
             try {
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 
-                // Explicitly setting delegate to CPU for both marker options to handle XNNPACK info logs
-                faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                    baseOptions: { 
-                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", 
-                        delegate: "CPU" 
-                    },
-                    outputFaceBlendshapes: true, 
-                    runningMode: "VIDEO"
-                });
-                
                 handLandmarker = await HandLandmarker.createFromOptions(vision, {
                     baseOptions: { 
                         modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", 
@@ -426,6 +489,15 @@
                     },
                     runningMode: "VIDEO", 
                     numHands: 2
+                });
+
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: { 
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task", 
+                        delegate: "CPU" 
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 1
                 });
                 
                 drawingUtils = new DrawingUtils(aiCtx);
@@ -442,6 +514,17 @@
             await initAudio();
             document.getElementById("intro-panel").style.display = "none";
             document.getElementById("hud-container").style.display = "block";
+            document.getElementById("hud-bars-hand").style.display = currentMode === "hand" ? "" : "none";
+            document.getElementById("hud-bars-dance").style.display = currentMode === "dance" ? "" : "none";
+            const hudLeftTitle = document.querySelector("#hud-left h2");
+            const hudRightTitle = document.querySelector("#hud-right h2");
+            if (currentMode === "dance") {
+                hudLeftTitle.textContent = "L_ARM : BASS";
+                hudRightTitle.textContent = "R_ARM : LEAD";
+            } else {
+                hudLeftTitle.textContent = "BASS_SYNTH";
+                hudRightTitle.textContent = "LEAD_SYNTH";
+            }
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { width: 640, height: 360, frameRate: { ideal: 30 } } 
@@ -456,20 +539,195 @@
         });
 
         function loop() {
+            if (!video.videoWidth || !video.videoHeight || !aiCanvas.width || !aiCanvas.height) {
+                requestAnimationFrame(loop);
+                return;
+            }
+            const now = performance.now();
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
-                const face = faceLandmarker.detectForVideo(video, performance.now());
-                const hands = handLandmarker.detectForVideo(video, performance.now());
                 aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
-                process(face, hands);
+                if (currentMode === "dance") {
+                    if (now - lastDanceInferMs >= DANCE_INFER_INTERVAL_MS) {
+                        lastDanceInferMs = now;
+                        const poses = poseLandmarker.detectForVideo(video, now);
+                        processDance(poses);
+                        drawNotes();
+                    }
+                } else {
+                    if (now - lastHandInferMs >= HAND_INFER_INTERVAL_MS) {
+                        lastHandInferMs = now;
+                        const hands = handLandmarker.detectForVideo(video, now);
+                        processHands(hands);
+                    }
+                }
             }
             requestAnimationFrame(loop);
             drawOsc();
         }
 
-        function process(face, hands) {
+        function getEnergy(lms) {
+            if (!prevPose) return 0;
+            let dist = 0, count = 0;
+            const indices = [15, 16, 27, 28];
+            for (const i of indices) {
+                if (lms[i] && prevPose[i]) {
+                    dist += Math.hypot(lms[i].x - prevPose[i].x, lms[i].y - prevPose[i].y);
+                    count++;
+                }
+            }
+            return count > 0 ? dist / count : 0;
+        }
+
+        function drawNotes() {
+            for (let i = floatingNotes.length - 1; i >= 0; i--) {
+                const n = floatingNotes[i];
+                n.y -= 0.01;
+                n.life -= 0.025;
+                if (n.life <= 0) { floatingNotes.splice(i, 1); continue; }
+                aiCtx.save();
+                aiCtx.globalAlpha = n.life;
+                aiCtx.fillStyle = n.color;
+                aiCtx.font = "bold 38px 'JetBrains Mono', monospace";
+                aiCtx.textAlign = "center";
+                aiCtx.shadowColor = n.color;
+                aiCtx.shadowBlur = 15;
+                aiCtx.translate(n.x * aiCanvas.width, n.y * aiCanvas.height);
+                aiCtx.scale(-1, 1);
+                aiCtx.fillText(n.text, 0, 0);
+                aiCtx.restore();
+            }
+        }
+
+        // Body-only: no face dots or face connections (indices 0-10 are face in Pose)
+        const BODY_START = 11;
+        function getBodyConnections() {
+            return PoseLandmarker.POSE_CONNECTIONS
+                .map((conn) => {
+                    if (Array.isArray(conn)) {
+                        const [start, end] = conn;
+                        return { start, end };
+                    }
+                    if (conn && typeof conn === "object" && Number.isFinite(conn.start) && Number.isFinite(conn.end)) {
+                        return { start: conn.start, end: conn.end };
+                    }
+                    return null;
+                })
+                .filter((conn) => conn && conn.start >= BODY_START && conn.end >= BODY_START)
+                .map((conn) => ({ start: conn.start - BODY_START, end: conn.end - BODY_START }));
+        }
+        const bodyConnections = getBodyConnections();
+
+        function processDance(poses) {
+            const time = audioCtx.currentTime;
+            state.bassIndex = -1;
+            state.leadIndex = -1;
+            state.lWristPos = null;
+            state.rWristPos = null;
+
+            if (poses.landmarks && poses.landmarks.length > 0) {
+                const lms = poses.landmarks[0];
+                const lShoulder = lms[11], rShoulder = lms[12];
+                const lWrist = lms[15], rWrist = lms[16];
+                const lHip = lms[23], rHip = lms[24];
+
+                state.lWristPos = lWrist;
+                state.rWristPos = rWrist;
+
+                // Draw body only: no face landmarks, no face connectors
+                const bodyLandmarks = lms.slice(BODY_START);
+                drawingUtils.drawConnectors(bodyLandmarks, bodyConnections, { color: "#ffffff44", lineWidth: 2 });
+
+                const w = aiCanvas.width, h = aiCanvas.height;
+                const drawGlow = (lm, color) => {
+                    if (!lm) return;
+                    aiCtx.beginPath();
+                    aiCtx.arc(lm.x * w, lm.y * h, 12 * state.pulse, 0, 7);
+                    aiCtx.fillStyle = color;
+                    aiCtx.fill();
+                };
+                drawGlow(lWrist, "#ff00ff88");
+                drawGlow(rWrist, "#00bfff88");
+
+                const torsoH = Math.max(0.1, Math.abs(((lHip.y + rHip.y) / 2) - ((lShoulder.y + rShoulder.y) / 2)));
+
+                const lRatio = (lHip.y - lWrist.y) / torsoH;
+                if (lRatio > 0.2) {
+                    if (lRatio < 0.8) state.bassIndex = 0;
+                    else if (lRatio < 1.4) state.bassIndex = 1;
+                    else if (lRatio < 2.0) state.bassIndex = 2;
+                    else state.bassIndex = 3;
+                }
+                const rRatio = (rHip.y - rWrist.y) / torsoH;
+                if (rRatio > 0.2) {
+                    if (rRatio < 0.8) state.leadIndex = 0;
+                    else if (rRatio < 1.4) state.leadIndex = 1;
+                    else if (rRatio < 2.0) state.leadIndex = 2;
+                    else state.leadIndex = 3;
+                }
+
+                const lPan = Math.max(-1, Math.min(1, (0.5 - lWrist.x) * 2));
+                const rPan = Math.max(-1, Math.min(1, (0.5 - rWrist.x) * 2));
+                pannerBass.pan.setTargetAtTime(lPan, time, 0.1);
+                pannerLead.pan.setTargetAtTime(rPan, time, 0.1);
+                document.getElementById("bass-coords").innerText = `PAN:${Math.round(lPan * 100)}%`;
+                document.getElementById("lead-coords").innerText = `PAN:${Math.round(rPan * 100)}%`;
+
+                const span = Math.hypot(lWrist.x - rWrist.x, lWrist.y - rWrist.y);
+                const filterNorm = Math.min(1, Math.max(0, (span - 0.15) / 0.6));
+                masterFilter.frequency.setTargetAtTime(300 + (filterNorm * 7000), time, 0.05);
+
+                const lean = Math.abs(lShoulder.y - rShoulder.y) / torsoH;
+                const leanNorm = Math.min(1, lean * 2.5);
+                distortion.curve = makeDistortionCurve(leanNorm * 400);
+                masterFilter.Q.setTargetAtTime(1 + (leanNorm * 15), time, 0.1);
+
+                const currentEnergy = getEnergy(lms);
+                state.energy = state.energy * 0.9 + currentEnergy * 0.1;
+                const energyNorm = Math.min(1, state.energy * 25);
+                drumGain.gain.setTargetAtTime(0.2 + (energyNorm * 1.5), time, 0.1);
+                delayGain.gain.setTargetAtTime(energyNorm * 0.6, time, 0.1);
+
+                const avgHeight = 1 - ((lWrist.y + rWrist.y) / 2);
+                const heightNorm = Math.min(1, Math.max(0, avgHeight));
+                brightnessFilter.gain.setTargetAtTime(heightNorm * 20, time, 0.1);
+
+                const armsUp = lWrist.y < lShoulder.y && rWrist.y < rShoulder.y;
+                const armsWide = span > 0.45 && !armsUp;
+                const drumModeEl = document.getElementById("drum-mode");
+                if (armsUp) {
+                    state.drumKit = 1;
+                    drumModeEl.innerText = "MODE: GLITCH KITS";
+                    drumModeEl.style.color = "var(--neon-cyan)";
+                } else if (armsWide) {
+                    state.drumKit = 2;
+                    drumModeEl.innerText = "MODE: HEAVY TOMS";
+                    drumModeEl.style.color = "var(--neon-pink)";
+                } else {
+                    state.drumKit = 0;
+                    drumModeEl.innerText = "MODE: TECHNO KICK";
+                    drumModeEl.style.color = "var(--neon-green)";
+                }
+
+                prevPose = lms;
+            } else {
+                state.energy *= 0.95;
+            }
+
+            const bassNoteEl = document.getElementById("bass-note");
+            const leadNoteEl = document.getElementById("lead-note");
+            bassNoteEl.innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
+            leadNoteEl.innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
+            bassNoteEl.style.color = state.bassIndex !== -1 ? bassColors[state.bassIndex] : "var(--neon-pink)";
+            leadNoteEl.style.color = state.leadIndex !== -1 ? leadColors[state.leadIndex] : "var(--neon-cyan)";
+            bassNoteEl.style.textShadow = state.bassIndex !== -1 ? `0 0 8px ${bassColors[state.bassIndex]}aa` : "0 0 8px rgba(255,0,255,0.5)";
+            leadNoteEl.style.textShadow = state.leadIndex !== -1 ? `0 0 8px ${leadColors[state.leadIndex]}aa` : "0 0 8px rgba(0,191,255,0.5)";
+        }
+
+        function processHands(hands) {
             const time = audioCtx.currentTime;
             let lPos = null, rPos = null;
+            let lThumb = null, rThumb = null;
             state.bassIndex = -1; state.leadIndex = -1;
 
             if (hands.landmarks.length > 0) {
@@ -477,25 +735,27 @@
                     const isLeft = hands.handednesses[idx][0].categoryName === "Left";
                     const wrist = lms[0], thumb = lms[4];
                     if (isLeft) {
-                        lPos = wrist; 
-                        state.lHand = { x: 1 - wrist.x, y: wrist.y }; 
+                        lPos = wrist;
+                        lThumb = thumb;
+                        state.lHand = { x: 1 - wrist.x, y: wrist.y };
                         pannerBass.pan.setTargetAtTime((state.lHand.x * 2) - 1, time, 0.1);
                         document.getElementById("bass-coords").innerText = `PAN:${Math.round(((state.lHand.x * 2) - 1) * 100)}%`;
                     } else {
                         rPos = wrist;
+                        rThumb = thumb;
                         state.rHand = { x: 1 - wrist.x, y: wrist.y };
                         pannerLead.pan.setTargetAtTime((state.rHand.x * 2) - 1, time, 0.1);
                         brightnessFilter.gain.setTargetAtTime((1 - state.rHand.y) * 20, time, 0.1);
                         updateBar("pos", (1 - state.rHand.y) * 100);
                         document.getElementById("lead-coords").innerText = `PAN:${Math.round(((state.rHand.x * 2) - 1) * 100)}%`;
                     }
-                    
+
                     const tips = [8, 12, 16, 20];
                     tips.forEach((tIdx, i) => {
                         const tip = lms[tIdx];
                         if (Math.hypot(thumb.x - tip.x, thumb.y - tip.y) < 0.07) {
                             if (isLeft) state.bassIndex = i; else state.leadIndex = i;
-                            const color = isLeft ? "#ff00ff" : "#00bfff";
+                            const color = isLeft ? bassColors[i] : leadColors[i];
                             aiCtx.beginPath();
                             aiCtx.arc(((tip.x + thumb.x) / 2) * aiCanvas.width, ((tip.y + thumb.y) / 2) * aiCanvas.height, 12 * state.pulse, 0, 7);
                             aiCtx.fillStyle = color;
@@ -504,29 +764,66 @@
                     });
                 });
             }
-            
-            document.getElementById("bass-note").innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
-            document.getElementById("lead-note").innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
 
-            if (lPos && rPos) {
-                state.armSpan = Math.max(0, Math.min(1, (Math.abs(lPos.x - rPos.x) - 0.15) / 0.5));
+            const bassNoteEl = document.getElementById("bass-note");
+            const leadNoteEl = document.getElementById("lead-note");
+            bassNoteEl.innerText = state.bassIndex !== -1 ? bassNames[state.bassIndex] : "--";
+            leadNoteEl.innerText = state.leadIndex !== -1 ? leadNames[state.leadIndex] : "--";
+            bassNoteEl.style.color = state.bassIndex !== -1 ? bassColors[state.bassIndex] : "var(--neon-pink)";
+            leadNoteEl.style.color = state.leadIndex !== -1 ? leadColors[state.leadIndex] : "var(--neon-cyan)";
+            bassNoteEl.style.textShadow = state.bassIndex !== -1 ? `0 0 8px ${bassColors[state.bassIndex]}aa` : "0 0 8px rgba(255,0,255,0.5)";
+            leadNoteEl.style.textShadow = state.leadIndex !== -1 ? `0 0 8px ${leadColors[state.leadIndex]}aa` : "0 0 8px rgba(0,191,255,0.5)";
+
+            if (lThumb && rThumb) {
+                const x1 = lThumb.x * aiCanvas.width;
+                const y1 = lThumb.y * aiCanvas.height;
+                const x2 = rThumb.x * aiCanvas.width;
+                const y2 = rThumb.y * aiCanvas.height;
+                // Soft thumb-link: rounded cap + glow gradient
+                const grad = aiCtx.createLinearGradient(x1, y1, x2, y2);
+                grad.addColorStop(0, "rgba(255, 255, 140, 0.20)");
+                grad.addColorStop(0.5, "rgba(255, 255, 170, 0.55)");
+                grad.addColorStop(1, "rgba(255, 255, 140, 0.20)");
+                aiCtx.beginPath();
+                aiCtx.moveTo(x1, y1);
+                aiCtx.lineTo(x2, y2);
+                aiCtx.strokeStyle = grad;
+                aiCtx.lineWidth = 1.5;
+                aiCtx.lineCap = "round";
+                aiCtx.shadowColor = "rgba(255, 255, 170, 0.65)";
+                aiCtx.shadowBlur = 10;
+                aiCtx.stroke();
+                aiCtx.shadowBlur = 0;
+
+                const thumbDist = Math.hypot(lThumb.x - rThumb.x, lThumb.y - rThumb.y);
+                state.armSpan = Math.max(0, Math.min(1, (thumbDist - 0.08) / 0.55));
                 drumGain.gain.setTargetAtTime(0.2 + (state.armSpan * 1.4), time, 0.1);
+                // Hand mode: drum energy also selects which drum kit/instrument is played.
+                if (state.armSpan > 0.72) {
+                    state.drumKit = 1; // brighter/glitchier kit
+                } else if (state.armSpan > 0.38) {
+                    state.drumKit = 2; // heavier/deeper kit
+                } else {
+                    state.drumKit = 0; // default techno kit
+                }
+
+                const handTilt = Math.min(Math.abs(Math.atan2(rThumb.y - lThumb.y, rThumb.x - lThumb.x)) / 0.7, 1);
+                masterFilter.Q.setTargetAtTime(1 + (handTilt * 25), time, 0.1);
+                distortion.curve = makeDistortionCurve(handTilt * 550);
+                updateBar("tilt", handTilt * 100);
+            } else {
+                updateBar("tilt", 0);
+                state.drumKit = 0;
             }
             updateBar("dist", state.armSpan * 100);
-
-            if (face.faceLandmarks.length > 0) {
-                const shapes = face.faceBlendshapes[0].categories;
-                const jaw = shapes.find(s => s.categoryName === "jawOpen")?.score || 0;
-                masterFilter.frequency.setTargetAtTime(400 + (jaw * 6500), time, 0.05);
-                delayGain.gain.setTargetAtTime(jaw * 0.7, time, 0.05);
-                updateBar("mouth", jaw * 100);
-
-                const lms = face.faceLandmarks[0];
-                const tilt = Math.min(Math.abs(Math.atan2(lms[263].y - lms[33].y, lms[263].x - lms[33].x)) / 0.45, 1);
-                masterFilter.Q.setTargetAtTime(1 + (tilt * 25), time, 0.1);
-                distortion.curve = makeDistortionCurve(tilt * 550);
-                updateBar("tilt", tilt * 100);
-            }
+            // WAH follows hand position (average height): higher hands -> brighter filter.
+            const avgHandHeight = (lPos && rPos)
+                ? (1 - ((lPos.y + rPos.y) / 2))
+                : (1 - ((state.lHand.y + state.rHand.y) / 2));
+            const wahNorm = Math.max(0, Math.min(1, avgHandHeight));
+            masterFilter.frequency.setTargetAtTime(400 + (wahNorm * 6500), time, 0.05);
+            delayGain.gain.setTargetAtTime(wahNorm * 0.5, time, 0.05);
+            updateBar("mouth", wahNorm * 100);
         }
 
         function updateBar(id, val) {
