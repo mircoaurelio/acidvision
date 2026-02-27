@@ -352,6 +352,11 @@
         let lastDanceInferMs = 0;
         const HAND_INFER_INTERVAL_MS = 50;  // ~20 FPS vision, smoother audio
         const DANCE_INFER_INTERVAL_MS = 33; // ~30 FPS vision
+        const OSC_DRAW_INTERVAL_MS = 33;    // cap oscilloscope to ~30 FPS
+        let lastOscDrawMs = 0;
+        let lastOscWidth = 0;
+        let lastOscHeight = 0;
+        let oscDataBuffer = null;
         const DANCE_POSE_HOLD_MS = 260;
         let lastDancePoseResult = null;
         let lastDancePoseResultAt = 0;
@@ -467,6 +472,8 @@
         }
 
         function openInstrumentContext(track, event) {
+            event.preventDefault();
+            event.stopPropagation();
             contextTrack = track;
             instrumentContextOptions.innerHTML = "";
             for (const preset of instrumentPresets[track]) {
@@ -474,9 +481,12 @@
                 card.type = "button";
                 card.className = `instrument-context-card${selectedInstruments[track] === preset.id ? " active" : ""}`;
                 card.textContent = preset.label;
-                card.addEventListener("click", () => {
+                card.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     selectedInstruments[track] = preset.id;
                     refreshInstrumentCardLabels();
+                    previewInstrument(track);
                     hideInstrumentContext();
                 });
                 instrumentContextOptions.appendChild(card);
@@ -490,6 +500,16 @@
 
         function hideInstrumentContext() {
             instrumentContextMenu.style.display = "none";
+        }
+
+        function previewInstrument(track) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            if (track === "bass") {
+                triggerSynthNote("bass", getBassNote(0).freq, 0.2, 0.16, now, pannerBass);
+            } else {
+                triggerSynthNote("lead", getLeadNote(1).freq, 0.14, 0.12, now, pannerLead);
+            }
         }
 
         function populateNoteMapRows(container, options, mapRef, labels) {
@@ -818,7 +838,6 @@
             const now = performance.now();
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
-                aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
                 if (currentMode === "dance") {
                     if (now - lastDanceInferMs >= DANCE_INFER_INTERVAL_MS) {
                         lastDanceInferMs = now;
@@ -827,18 +846,20 @@
                             lastDancePoseResult = poses;
                             lastDancePoseResultAt = now;
                         }
+                        aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
+                        const hasFreshDancePose = lastDancePoseResult && (now - lastDancePoseResultAt) <= DANCE_POSE_HOLD_MS;
+                        if (hasFreshDancePose) {
+                            processDance(lastDancePoseResult);
+                        } else {
+                            processDance({ landmarks: [] });
+                        }
+                        drawNotes();
                     }
-                    const hasFreshDancePose = lastDancePoseResult && (now - lastDancePoseResultAt) <= DANCE_POSE_HOLD_MS;
-                    if (hasFreshDancePose) {
-                        processDance(lastDancePoseResult);
-                    } else {
-                        processDance({ landmarks: [] });
-                    }
-                    drawNotes();
                 } else {
                     if (now - lastHandInferMs >= HAND_INFER_INTERVAL_MS) {
                         lastHandInferMs = now;
                         const hands = handLandmarker.detectForVideo(video, now);
+                        aiCtx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
                         processHands(hands);
                     }
                 }
@@ -1139,20 +1160,31 @@
 
         function drawOsc() {
             if (!analyser) return;
-            oscCanvas.width = window.innerWidth;
-            const cssHeight = parseInt(getComputedStyle(oscCanvas).height);
-            oscCanvas.height = cssHeight;
+            const now = performance.now();
+            if (now - lastOscDrawMs < OSC_DRAW_INTERVAL_MS) return;
+            lastOscDrawMs = now;
+
+            const targetWidth = window.innerWidth;
+            const targetHeight = parseInt(getComputedStyle(oscCanvas).height);
+            if (targetWidth !== lastOscWidth || targetHeight !== lastOscHeight) {
+                oscCanvas.width = targetWidth;
+                oscCanvas.height = targetHeight;
+                lastOscWidth = targetWidth;
+                lastOscHeight = targetHeight;
+            }
             
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteTimeDomainData(data);
+            if (!oscDataBuffer || oscDataBuffer.length !== analyser.frequencyBinCount) {
+                oscDataBuffer = new Uint8Array(analyser.frequencyBinCount);
+            }
+            analyser.getByteTimeDomainData(oscDataBuffer);
             oscCtx.clearRect(0, 0, oscCanvas.width, oscCanvas.height);
             oscCtx.lineWidth = 2;
             oscCtx.strokeStyle = "#00ffcc";
             oscCtx.beginPath();
-            const slice = oscCanvas.width / data.length;
+            const slice = oscCanvas.width / oscDataBuffer.length;
             let x = 0;
-            for(let i=0; i<data.length; i++) {
-                const y = (data[i]/128.0) * (oscCanvas.height/2);
+            for (let i = 0; i < oscDataBuffer.length; i++) {
+                const y = (oscDataBuffer[i] / 128.0) * (oscCanvas.height / 2);
                 if(i===0) oscCtx.moveTo(x,y); else oscCtx.lineTo(x,y);
                 x += slice;
             }
